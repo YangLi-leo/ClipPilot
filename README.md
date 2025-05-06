@@ -10,15 +10,14 @@ ClipPilot integrates with a custom YouTube MCP server to:
 2. Identify trending content within the extracted transcripts
 3. Generate automated insights and daily highlights based on the trending content
 
-The system uses the CAMEL-AI framework's MCPAgent to communicate with the YouTube MCP server for accessing YouTube data.
+The system uses a single agent that combines YouTube search and transcript extraction functionality, providing transcripts in markdown format through a unified interface.
 
 ## Architecture
 
-ClipPilot consists of several key components:
+ClipPilot consists of two key components:
 
-- **CAMEL-AI MCPAgent**: Core component that communicates with the YouTube MCP server to access YouTube data
+- **ClipPilotAgent**: A single agent that handles both YouTube search and transcript extraction in one unified interface, formatting transcripts in markdown
 - **YouTube MCP Server**: Provides tools for accessing YouTube data (videos, transcripts, channels, playlists)
-- **YouTubeCoordinator**: Simple interface for using MCPAgent to search videos and extract transcripts
 
 ## Getting Started
 
@@ -55,44 +54,40 @@ Basic usage example:
 
 ```python
 import asyncio
-from camel.agents import MCPAgent
-from camel.models import ModelFactory
-from camel.types import ModelPlatformType, ModelType
-from src.agents.coordinator import YouTubeCoordinator
+from src.agents.clip_pilot_agent import ClipPilotAgent
 from src.config import Config
 
 async def main():
     # Initialize configuration
     config = Config()
     
-    # Create model backend
-    model = ModelFactory.create(
-        model_platform=ModelPlatformType.DEFAULT,
-        model_type=ModelType.DEFAULT,
-    )
-    
-    # Create and initialize MCP agent
-    mcp_agent = await MCPAgent.create(
-        config_path=config.mcp_config_path,
-        model=model,
-    )
+    # Create and initialize ClipPilot agent
+    agent = await ClipPilotAgent.create(config)
     
     try:
-        # Create coordinator
-        coordinator = YouTubeCoordinator(mcp_agent)
+        # Search for videos and get transcripts in one operation
+        results = await agent.search_and_get_transcripts(
+            query="artificial intelligence trends 2025",
+            max_results=3
+        )
         
-        # Search for videos
-        videos = await coordinator.search_videos("artificial intelligence trends 2025")
+        # Print the results
+        for title, transcript in results.items():
+            print(f"Video: {title}")
+            print(f"Transcript preview: {transcript[:200]}...\n")
+            
+        # Alternatively, search for videos first
+        videos = await agent.search_videos("machine learning applications")
         
-        # Get transcript for the first video
+        # Then get transcript for a specific video
         if videos:
-            video_id = videos[0].get("id", {}).get("videoId")
+            video_id = agent._extract_video_id(videos[0])
             if video_id:
-                transcript = await coordinator.get_transcript(video_id)
-                print(f"Transcript: {transcript[:500]}...")
+                transcript = await agent.get_transcript(video_id)
+                print(f"Transcript: {transcript[:200]}...")
     finally:
         # Ensure proper cleanup
-        await mcp_agent.close()
+        await agent.close()
 
 # Run the main application
 asyncio.run(main())
@@ -108,8 +103,7 @@ For more detailed usage examples, see the [examples](./examples) directory.
 ClipPilot/
 ├── src/                  # Source code
 │   ├── agents/           # CAMEL-AI agent wrappers
-│   │   ├── coordinator.py  # YouTubeCoordinator for MCPAgent
-│   │   └── clip_pilot_agent.py  # ClipPilotAgent (optional wrapper)
+│   │   └── clip_pilot_agent.py  # Combined agent for search and transcript extraction
 │   ├── utils/            # Utility functions
 │   ├── models/           # Model definitions and configurations
 │   ├── config.py         # Configuration handling
